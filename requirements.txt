@@ -1,0 +1,9 @@
+# 云服务器 (CUDA 12.x)：先按显卡驱动装对应 CUDA 轮子，再装其余依赖
+#   pip install torch --index-url https://download.pytorch.org/whl/cu126
+#   pip install -r requirements.txt
+# 本地 CPU 冒烟：
+#   pip install torch --index-url https://download.pytorch.org/whl/cpu
+#
+# torch>=2.9 才有原生 torch.optim.Muon；更老版本自动回退到内置 SimpleMuon。
+torch>=2.6
+numpy>=1.26
