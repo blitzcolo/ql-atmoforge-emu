@@ -2,8 +2,7 @@
 
 配套 [ql-atmoforge](https://github.com/blitzcolo/ql-atmoforge) 数据生成器的 PyTorch 训练侧项目：
 把 `ql-atmoforge merge` 产出的数据集训练成 **(大气/几何/太阳参数 → 大气光谱量)**
-的神经网络代理模型。设计依据全部来自 `ql-atmoforge/ModModel.md`
-（三网拆分、解析归一化、方差下限、PCA 头、残差 MLP 等），本 README 只讲怎么跑。
+的神经网络代理模型。
 
 ```
 ql-atmoforge gen/merge  →  prepare_data.py  →  train.py (×3 网)  →  evaluate.py
@@ -12,7 +11,7 @@ ql-atmoforge gen/merge  →  prepare_data.py  →  train.py (×3 网)  →  eval
 
 ## 1. 环境
 
-Python ≥ 3.10，PyTorch + CUDA 12：(13 则修改响应版本号即可)
+Python ≥ 3.10，PyTorch + CUDA 12：(13 则修改相应版本号即可)
 
 ```sh
 pip install torch --index-url https://download.pytorch.org/whl/cu126   # CUDA 12.x
