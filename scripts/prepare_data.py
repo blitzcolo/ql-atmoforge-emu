@@ -37,6 +37,10 @@ from atmoemu.transforms import (build_input_spec, default_targets,  # noqa: E402
 def parse_args():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--data-dir", required=True, help="merge 产出目录")
+    ap.add_argument("--prep-dir", default=None,
+                    help="产物输出目录，默认 <data-dir>/prep。双 prep 流程："
+                         "prep_sat 给 tau（饱和过滤），prep_full 给 lpath/ldown"
+                         "（--saturation-tau-max 0 全量）")
     ap.add_argument("--nets", nargs="+", default=None,
                     choices=["tau", "lpath", "ldown"],
                     help="默认 tau lpath（thermal 波段自动加 ldown）")
@@ -122,8 +126,8 @@ def fit_pca(man: Manifest, ospec, train_idx: np.ndarray, n_comp: int,
 def main():
     args = parse_args()
     man = Manifest.load(args.data_dir)
-    prep = Path(args.data_dir) / "prep"
-    prep.mkdir(exist_ok=True)
+    prep = Path(args.prep_dir) if args.prep_dir else Path(args.data_dir) / "prep"
+    prep.mkdir(parents=True, exist_ok=True)
 
     nets = args.nets or (["tau", "lpath", "ldown"] if man.band["thermal"]
                          else ["tau", "lpath"])
@@ -223,6 +227,7 @@ def main():
 
     (prep / "splits.json").write_text(json.dumps({
         "data_dir": str(Path(args.data_dir).resolve()),
+        "prep_dir": str(prep.resolve()),
         "test_dir": str(Path(args.test_dir).resolve()) if args.test_dir else None,
         "val_frac": args.val_frac, "test_frac": test_frac,
         "split_seed": args.split_seed, "drop_partial": args.drop_partial,

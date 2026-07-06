@@ -52,16 +52,32 @@ def compute_metrics(z_true: np.ndarray, z_pred: np.ndarray,
             out[f"{tag}/tau_mae"] = float(tau_err.mean())        # δ 绝对误差 ≈ τ 相对误差
             out[f"{tag}/tau_p99"] = _p99(tau_err)
         else:
-            denom = np.maximum(np.abs(a), 1e-3 * np.abs(a).max() + 1e-300)
-            rel = np.abs(b - a) / denom
-            out[f"{tag}/rad_rel_mae"] = float(rel.mean())
+            # 近零保护：辐亮度真值在吸收带芯/冷背景处 ≈0，相对误差与逆
+            # Planck 亮温在零附近发散，会把无信号元素的数值噪声放大成
+            # 天文数字（MWIR 实测 rel_mae 上万、bt_mae 数百 K，而标准化
+            # NRMSE 同时只有百分之几）。口径改为"有信号处的精度"：
+            #  - 预测钳非负（部署契约相同，infer.py 亦然）；
+            #  - 通道尺度取该通道 |L| 的 99 分位（对圆日等离群样本稳健），
+            #    只统计 L_true 超过通道尺度 1% 且通道尺度不低于整带尺度
+            #    1e-3 的元素（后者剔除全零死通道），覆盖率记
+            #    rad_valid_frac / bt_valid_frac。
+            ref = float(np.percentile(np.abs(a), 99.9)) + 1e-300
+            cs = np.percentile(np.abs(a), 99, axis=0)          # [K] 通道尺度
+            valid = (np.abs(a) > 1e-2 * cs[None, :]) & (cs > 1e-3 * ref)[None, :]
+            bp = np.maximum(b, 0.0)
+            rel = np.where(valid,
+                           np.abs(bp - a) / np.maximum(np.abs(a), 1e-300),
+                           np.nan)
+            out[f"{tag}/rad_rel_mae"] = float(np.nanmean(rel))
             out[f"{tag}/rad_rel_p99"] = _p99(rel)
+            out[f"{tag}/rad_valid_frac"] = float(valid.mean())
             if thermal and r.column in ("TOTAL_RAD", "PTH_THRML"):
-                bt_t = brightness_temperature(a, nu_cm)
-                bt_p = brightness_temperature(b, nu_cm)
+                bt_t = brightness_temperature(np.where(valid, a, np.nan), nu_cm)
+                bt_p = brightness_temperature(np.where(valid, bp, np.nan), nu_cm)
                 dt = np.abs(bt_p - bt_t)
                 out[f"{tag}/bt_mae_K"] = float(np.nanmean(dt))
                 out[f"{tag}/bt_p99_K"] = _p99(dt)
+                out[f"{tag}/bt_valid_frac"] = float(valid.mean())
     out["per_channel_nrmse"] = per_ch_rmse.reshape(T, K)
     return out
 

@@ -195,8 +195,11 @@ class TargetRow:
         if self.kind == "delta":
             y = np.clip(y, 0.0, self.clamp_max)
         if self.log_mask is not None and self.log_mask.any():
-            y = np.where(self.log_mask,
-                         np.log(np.maximum(y, 0.0) + self.log_eps), y)
+            # np.where 对未选中的线性分支也求值，log(0+0) 的 -inf 会被丢弃
+            # 但仍触发 RuntimeWarning——按掩码静音
+            with np.errstate(divide="ignore"):
+                y = np.where(self.log_mask,
+                             np.log(np.maximum(y, 0.0) + self.log_eps), y)
         return (y - self.mean) / self.std
 
     def inverse(self, z: np.ndarray) -> np.ndarray:
@@ -308,21 +311,32 @@ def fit_output_spec(man: Manifest, targets: list[tuple[str, str, str]],
         s2 = np.zeros(K)
         for y in chunks():
             if r.log_mask.any():
-                y = np.where(r.log_mask,
-                             np.log(np.maximum(y, 0.0) + r.log_eps), y)
+                with np.errstate(divide="ignore"):
+                    y = np.where(r.log_mask,
+                                 np.log(np.maximum(y, 0.0) + r.log_eps), y)
             n += y.shape[0]
             s1 += y.sum(axis=0)
             s2 += (y * y).sum(axis=0)
         mean = s1 / n
         var = np.maximum(s2 / n - mean * mean, 0.0)
         std = np.sqrt(var)
-        med = np.median(std)
-        floor = max(floor_frac * med, 1e-12)
+        # 方差下限（§6.2）按变换分组各算各的：log 通道的 σ 是 ln 空间的
+        # O(1)，线性通道的 σ 是物理单位（辐亮度低到 1e-8）。混成一个中位数
+        # 时，log 多数会把下限抬到 0.01×O(1)，线性通道整组触底——mwir ldown
+        # 实测 448 个线性通道全部被压成 σ=9e-3（真实 σ 的 ~1e6 倍），标签
+        # 标准化后塌缩成常数，网络在这些通道上学不到任何东西。
         r.mean = mean
-        r.std = np.maximum(std, floor)  # 方差下限：防打印量化噪声放大（§6.2）
+        r.std = std.copy()
+        stats = []
+        for name_g, grp in (("log", r.log_mask), ("lin", ~r.log_mask)):
+            if not grp.any():
+                continue
+            med = np.median(std[grp])
+            floor = max(floor_frac * med, 1e-30)
+            r.std[grp] = np.maximum(std[grp], floor)
+            stats.append(f"{name_g} {int(grp.sum())}ch σ中位 {med:.3e} "
+                         f"触底 {int((std[grp] < floor).sum())}")
         if verbose:
-            print(f"  [{block}.{column}] n={n}  log 通道 {int(r.log_mask.sum())}/{K}"
-                  f"  σ 中位 {med:.3e}  σ 下限 {floor:.3e}"
-                  f"  σ 触底通道 {int((std < floor).sum())}")
+            print(f"  [{block}.{column}] n={n}  " + "; ".join(stats))
         rows.append(r)
     return OutputSpec(rows=rows, K=K)

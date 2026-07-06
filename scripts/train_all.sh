@@ -34,25 +34,26 @@ for band in lwir mwir nir swir vis; do
     [ -d "$ds" ] || { echo "[skip] $ds 不存在"; continue; }
     name=$(basename "$ds")
 
-    test_args=()
-    [ -d "${ds}_test" ] && test_args=(--test-dir "${ds}_test")
-    pca_args=()
     pca_mode=none
-    if [ "$band" = vis ]; then
-        pca_args=(--pca tau=150 lpath=100)   # ModModel.md §6.3：δ 100–200、辐亮度 50–100
-        pca_mode=head
-    fi
-
-    echo "=== [$name] prepare ==="
-    $PY scripts/prepare_data.py --data-dir "$ds" "${test_args[@]}" "${pca_args[@]}"
+    [ "$band" = vis ] && pca_mode=head
 
     nets="tau lpath"
-    [ "$band" = lwir ] || [ "$band" = mwir ] && nets="tau lpath ldown"
+    if [ "$band" = lwir ] || [ "$band" = mwir ]; then
+        nets="tau lpath ldown"
+    fi
+
+    # 双 prep（emu README §3）：tau 用 prep_sat（剔饱和），辐亮度网用 prep_full（全量）。
+    # 策略集中在 prepare_all.sh；已存在的 prep 会被跳过（FORCE=1 重跑）
+    echo "=== [$name] prepare (双 prep) ==="
+    DATA_ROOT="$DATA_ROOT" PYTHON="$PY" bash scripts/prepare_all.sh "$name"
+
     for net in $nets; do
+        prep="$ds/prep_full"; eval_extra=(--saturation-tau-max 0)
+        [ "$net" = tau ] && { prep="$ds/prep_sat"; eval_extra=(); }
         echo "=== [$name] train $net ==="
         extra=()
         [ "$pca_mode" = head ] && extra=(--pca-mode head)
-        run_train --data-dir "$ds" --net "$net" \
+        run_train --data-dir "$ds" --net "$net" --prep-dir "$prep" \
             --width "${WIDTH[$band]}" --blocks "${BLOCKS[$band]}" \
             --optimizer "$OPT" --batch-size 1024 --preload "${extra[@]}"
 
@@ -60,7 +61,7 @@ for band in lwir mwir nir swir vis; do
             tag="${WIDTH[$band]}x${BLOCKS[$band]}_${OPT}"
             [ "$pca_mode" = head ] && tag="${tag}_pca-head"
             $PY scripts/evaluate.py --run-dir "runs/${name}_${net}_${tag}" \
-                --data-dir "${ds}_test"
+                --data-dir "${ds}_test" "${eval_extra[@]}"
         fi
     done
   done
