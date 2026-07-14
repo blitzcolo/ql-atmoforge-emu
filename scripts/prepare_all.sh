@@ -22,7 +22,7 @@ FORCE=${FORCE:-0}
 datasets=("$@")
 if [ ${#datasets[@]} -eq 0 ]; then
     for band in lwir mwir nir swir vis; do
-        for ptype in ground slant; do datasets+=("${band}_${ptype}_v1"); done
+        for ptype in ground slant sky; do datasets+=("${band}_${ptype}_v1"); done
     done
 fi
 
@@ -39,24 +39,31 @@ for name in "${datasets[@]}"; do
     ds="$DATA_ROOT/$name"
     [ -d "$ds" ] || { echo "[skip] $ds 不存在"; continue; }
     band=${name%%_*}
+    ptype=$(echo "$name" | cut -d_ -f2)
 
     test_args=()
     [ -d "${ds}_test" ] && test_args=(--test-dir "${ds}_test")
     [ ${#test_args[@]} -eq 0 ] && \
         echo "[warn] $name: 无 ${name}_test，退化为同集切分（仅可冒烟，不可出正式指标）"
 
+    # sky 数据集不产 ldown 块（其 lpath 即天空辐亮度）
     rad_nets="lpath"
-    { [ "$band" = lwir ] || [ "$band" = mwir ]; } && rad_nets="lpath ldown"
+    if { [ "$band" = lwir ] || [ "$band" = mwir ]; } && [ "$ptype" != sky ]; then
+        rad_nets="lpath ldown"
+    fi
     pca_sat=(); pca_full=()
     if [ "$band" = vis ]; then
         pca_sat=(--pca tau=150); pca_full=(--pca lpath=100)   # ModModel.md §6.3
     fi
+    # sky 辐亮度 prep 剔圆日锥体（lwir 太阳固定，无锥体可剔）
+    cone=()
+    if [ "$ptype" = sky ] && [ "$band" != lwir ]; then cone=(--drop-sun-cone 3); fi
 
     echo "=== [$name] prep_sat (tau, 剔饱和) ==="
     prep_one "$ds/prep_sat" --data-dir "$ds" --nets tau \
         "${test_args[@]}" "${pca_sat[@]}"
     echo "=== [$name] prep_full ($rad_nets, 全量) ==="
     prep_one "$ds/prep_full" --data-dir "$ds" --nets $rad_nets \
-        --saturation-tau-max 0 "${test_args[@]}" "${pca_full[@]}"
+        --saturation-tau-max 0 "${cone[@]}" "${test_args[@]}" "${pca_full[@]}"
 done
 echo "=== prepare_all 完成 ==="

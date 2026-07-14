@@ -29,7 +29,7 @@ declare -A WIDTH=(  [lwir]=256 [mwir]=256 [nir]=384 [swir]=384 [vis]=512 )
 declare -A BLOCKS=( [lwir]=4   [mwir]=4   [nir]=4   [swir]=4   [vis]=6   )
 
 for band in lwir mwir nir swir vis; do
-  for ptype in ground slant; do
+  for ptype in ground slant sky; do
     ds="$DATA_ROOT/${band}_${ptype}_v1"
     [ -d "$ds" ] || { echo "[skip] $ds 不存在"; continue; }
     name=$(basename "$ds")
@@ -38,8 +38,8 @@ for band in lwir mwir nir swir vis; do
     [ "$band" = vis ] && pca_mode=head
 
     nets="tau lpath"
-    if [ "$band" = lwir ] || [ "$band" = mwir ]; then
-        nets="tau lpath ldown"
+    if { [ "$band" = lwir ] || [ "$band" = mwir ]; } && [ "$ptype" != sky ]; then
+        nets="tau lpath ldown"   # sky 无 ldown 块：其 lpath 即天空辐亮度
     fi
 
     # 双 prep（emu README §3）：tau 用 prep_sat（剔饱和），辐亮度网用 prep_full（全量）。

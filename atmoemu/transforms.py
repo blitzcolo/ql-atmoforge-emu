@@ -134,8 +134,17 @@ def build_input_spec(man: Manifest, net: str) -> InputSpec:
             entries.append({"kind": "linear", "name": name, "col": i,
                             "lo": lo, "hi": hi})
 
-    # 几何块：h2 恒冗余（斜程≡0 / 横程≡h1）；h1、横程 range 与采样块重复。
-    if man.is_slant and net != "ldown":
+    # 几何块：h2 恒冗余（斜程≡0 / 横程≡h1 / sky≡100）；h1、横程 range 与采样块重复。
+    if man.is_sky:
+        # 天空穹顶：方向由 cos(view_zenith) 表达（[cos 89°, 1]）；上行路径长度
+        # 是 (h1, zenith) 的光滑函数，不作为独立特征
+        th_lo, th_hi = man.param_range("view_zenith_deg")
+        if th_hi - th_lo > 1e-9:
+            clo = math.cos(math.radians(th_hi))
+            chi = math.cos(math.radians(th_lo))
+            entries.append({"kind": "linear", "name": "cos_view_zenith",
+                            "col": gcol["cos_view_zenith"], "lo": clo, "hi": chi})
+    elif man.is_slant and net != "ldown":
         th_lo, th_hi = man.param_range("view_zenith_deg")
         if th_hi - th_lo > 1e-9:
             clo = math.cos(math.radians(th_hi))
@@ -170,8 +179,9 @@ def default_targets(man: Manifest, net: str) -> list[tuple[str, str, str]]:
                     ("lpath", "SOL_SCAT", "radiance")]
         return [("lpath", "TOTAL_RAD", "radiance")]
     if net == "ldown":
-        if not man.band["thermal"]:
-            raise ValueError(f"波段 {band} 非 thermal，数据集无 ldown 块")
+        if "ldown" not in man.blocks:
+            raise ValueError(f"数据集无 ldown 块（{band} 非 thermal，或 sky 路径"
+                             f"——sky 的 lpath 本身就是天空辐亮度）")
         return [("ldown", "TOTAL_RAD", "radiance")]
     raise ValueError(f"未知 net: {net}")
 

@@ -54,6 +54,10 @@ def parse_args():
                     help="剔除 partial 样本（默认保留，仅剔目标列含 NaN 的）")
     ap.add_argument("--saturation-tau-max", type=float, default=1e-3,
                     help="max_ν(tau.TOTAL) 低于此阈值的整谱饱和样本剔除；0 关闭")
+    ap.add_argument("--drop-sun-cone", type=float, default=0.0,
+                    help="剔除视线与太阳夹角小于该度数的样本（sky 数据集的辐亮度 "
+                         "prep 用 3；圆日方向辐亮度高数个量级，是归一化统计的毒药，"
+                         "且稀疏样本学不出日周光晕）；0 关闭")
     ap.add_argument("--delta-clamp", type=float, default=20.0)
     ap.add_argument("--log-dynrange", type=float, default=1e3,
                     help="辐亮度通道动态范围超过此值时改 log(L+ε) 训练")
@@ -129,8 +133,8 @@ def main():
     prep = Path(args.prep_dir) if args.prep_dir else Path(args.data_dir) / "prep"
     prep.mkdir(parents=True, exist_ok=True)
 
-    nets = args.nets or (["tau", "lpath", "ldown"] if man.band["thermal"]
-                         else ["tau", "lpath"])
+    nets = args.nets or (["tau", "lpath"] +
+                         (["ldown"] if "ldown" in man.blocks else []))
     print(f"[dataset] {man.data_dir.name}: band={man.band['name']} "
           f"K={man.K} path={man.path_type} sampler={man.sampler} "
           f"N={man.n_present}  nets={nets}")
@@ -151,6 +155,23 @@ def main():
         print(f"[clean] 整谱饱和 (max τ < {args.saturation_tau_max:g}): "
               f"剔 {int(sat.sum())}")
         cand = cand[~sat]
+
+    if args.drop_sun_cone > 0:
+        fn = man.feature_names
+        need = ("view_zenith_deg", "sun_zenith_deg", "sun_rel_azimuth_deg")
+        if all(n in fn for n in need):
+            P = np.asarray(man.npy("params", mmap=False))
+            vz, sz, ra = (np.radians(P[cand, fn.index(n)]) for n in need)
+            cos_t = (np.cos(sz) * np.cos(vz)
+                     + np.sin(sz) * np.sin(vz) * np.cos(ra))
+            cone = np.degrees(np.arccos(np.clip(cos_t, -1.0, 1.0))) \
+                < args.drop_sun_cone
+            keep[cand[cone]] = False
+            print(f"[clean] 圆日锥体 (视线-太阳夹角 < {args.drop_sun_cone:g}°): "
+                  f"剔 {int(cone.sum())}（部署侧 LUT 烘焙同步钳制该锥体）")
+            cand = cand[~cone]
+        else:
+            print(f"[clean] 圆日锥体: 特征缺 {need} 之一（太阳角固定？），跳过")
 
     needed: dict[str, list[int]] = {}
     for net in nets:
@@ -232,6 +253,7 @@ def main():
         "val_frac": args.val_frac, "test_frac": test_frac,
         "split_seed": args.split_seed, "drop_partial": args.drop_partial,
         "saturation_tau_max": args.saturation_tau_max,
+        "drop_sun_cone": args.drop_sun_cone,
         "delta_clamp": args.delta_clamp,
         "n_total": int(N), "n_keep": int(keep.sum()),
         "n_train": len(train_idx), "n_val": len(val_idx), "n_test": int(n_test),

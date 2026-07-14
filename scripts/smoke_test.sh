@@ -35,6 +35,14 @@ echo "=== 5. 横程数据集（几何块走另一条代码路径） ==="
 $PY scripts/train.py --data-dir $TMP/fake_swir_ground --net tau $COMMON \
     --epochs 6 --out $TMP/runs/swir_tau
 
+echo "=== 5b. sky 数据集（望天路径：无 ldown 块 + 圆日锥体剔除） ==="
+$PY scripts/make_fake_data.py --out $TMP/fake_mwir_sky --n 1024 --seed 42 \
+    --band mwir_toy --path sky
+$PY scripts/prepare_data.py --data-dir $TMP/fake_mwir_sky --val-frac 0.15 \
+    --drop-sun-cone 3
+$PY scripts/train.py --data-dir $TMP/fake_mwir_sky --net lpath $COMMON \
+    --epochs 6 --out $TMP/runs/sky_lpath
+
 echo "=== 6. 独立 random 测试集评估 ==="
 for run in tau lpath_muon ldown lpath_pca; do
     $PY scripts/evaluate.py --run-dir $TMP/runs/$run --data-dir $TMP/fake_mwir_slant_test

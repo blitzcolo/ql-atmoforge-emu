@@ -164,7 +164,12 @@ python scripts/anchor_gate.py --anchors-root /path/to/ql-atmoforge/out/anchors
 |---|---|---|---|
 | `tau` | 全部 − 太阳 2 维 | `tau.LOG_TOTAL`（δ=−ln τ，钳 20） | τ 与太阳无关 |
 | `lpath` | 全部 | `lpath.TOTAL_RAD`；**mwir 拆 `PTH_THRML`+`SOL_SCAT` 两头** | 夜间下游把 SOL_SCAT 置零 |
-| `ldown` | 斜程剔 h1/视角/距离；横程只剔距离 | `ldown.TOTAL_RAD` | 仅 thermal 波段 |
+| `ldown` | 斜程剔 h1/视角/距离；横程只剔距离 | `ldown.TOTAL_RAD` | 仅 thermal 波段；**sky 数据集无此网** |
+
+**sky 数据集**（`<band>_sky_v1`，path_type=sky，望天路径）：`lpath` 网即
+**(方向, 天气) → 天空穹顶辐亮度**，输入自动含 `cos_view_zenith`（[cos 89°, 1]）；
+无派生 range 特征、无 ldown 块。辐亮度 prep 用 `--drop-sun-cone 3` 剔圆日锥体
+（prepare_all.sh 已内建）——部署侧穹顶 LUT 烘焙对 3° 锥内与 >89° 的查询做钳制。
 
 输入变换全部由 manifest 解析生成（uniform→min-max、log_uniform→ln、
 天顶角→cos、相对方位角→cos Δφ、离散→one-hot、常量剔除），不碰数据统计量；

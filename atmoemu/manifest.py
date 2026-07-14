@@ -99,7 +99,13 @@ class Manifest:
 
     @property
     def is_slant(self) -> bool:
-        return self.path_type != "horizontal"
+        # 精确匹配而非“非 horizontal 即斜程”：sky（上行望天）也非 horizontal，
+        # 但几何假设与向下斜程完全不同
+        return self.path_type == "slant_to_ground"
+
+    @property
+    def is_sky(self) -> bool:
+        return self.path_type == "sky"
 
     @property
     def n_present(self) -> int:

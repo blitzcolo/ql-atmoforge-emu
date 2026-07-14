@@ -62,6 +62,9 @@ def sampled_spec(path_type: str) -> dict:
     if path_type == "slant_to_ground":
         s["h1_km"] = {"uniform": [0.5, 12.0]}
         s["view_zenith_deg"] = {"uniform": [110.0, 180.0]}
+    elif path_type == "sky":
+        s["h1_km"] = {"log_uniform": [0.01, 12.0]}
+        s["view_zenith_deg"] = {"uniform": [0.0, 89.0]}
     else:
         s["h1_km"] = {"uniform": [0.0, 0.5]}
         s["range_km"] = {"log_uniform": [0.05, 20.0]}
@@ -88,7 +91,7 @@ def main():
     ap.add_argument("--sampler", default="sobol", choices=["sobol", "random"])
     ap.add_argument("--band", default="mwir_toy", choices=list(BANDS))
     ap.add_argument("--path", default="slant_to_ground",
-                    choices=["slant_to_ground", "horizontal"])
+                    choices=["slant_to_ground", "horizontal", "sky"])
     args = ap.parse_args()
 
     band = BANDS[args.band]
@@ -110,6 +113,10 @@ def main():
         view = np.full(N, 90.0)
         h2 = h1.copy()
         rng_km = cols["range_km"]
+    elif path_type == "sky":
+        view = cols["view_zenith_deg"]
+        h2 = np.full(N, 100.0)
+        rng_km = np.zeros(N)          # 与生成端 resolve 一致：sky 不派生 range
     else:
         view = cols["view_zenith_deg"]
         h2 = np.zeros(N)
@@ -128,6 +135,9 @@ def main():
 
     if path_type == "horizontal":
         pathfac = rng_km * np.exp(-h1 / 8.0)
+    elif path_type == "sky":
+        # 上行整层：观察点以上的等效柱 × 天顶角 airmass
+        pathfac = 8.0 * np.exp(-h1 / 8.0) / np.maximum(cosv, 0.02)
     else:
         pathfac = 8.0 * (1.0 - np.exp(-h1 / 8.0)) / np.maximum(-cosv, 0.05)
     pf = pathfac[:, None]
@@ -152,12 +162,15 @@ def main():
         sol = 4e-8 * cos_sun * az_fac * haze_fac * (0.3 + 0.2 * g_h2o) * np.sqrt(tau)
         lp = np.stack([tau, pth, sol, pth + sol], axis=1)   # TOT_TRANS PTH SOL TOTAL
         lp_cols = ["TOT_TRANS", "PTH_THRML", "SOL_SCAT", "TOTAL_RAD"]
-        dv = 0.45 * (0.30 * (cols["h2o_scale"] * cols["rh"])[:, None] * (0.4 + g_h2o)
-                     + (0.55 / cols["vis_km"])[:, None]) * 8.0
-        tdv = np.exp(-dv)
-        pthd = planck(nu[None, :], t_air - 12.0) * (1.0 - tdv)
-        sold = 0.3 * 4e-8 * cos_sun * haze_fac * np.sqrt(tdv)
-        ld = np.stack([tdv, pthd, sold, pthd + sold], axis=1)
+        if path_type == "sky":
+            ld = None          # sky 无 ldown 块（lpath 即天空辐亮度）
+        else:
+            dv = 0.45 * (0.30 * (cols["h2o_scale"] * cols["rh"])[:, None] * (0.4 + g_h2o)
+                         + (0.55 / cols["vis_km"])[:, None]) * 8.0
+            tdv = np.exp(-dv)
+            pthd = planck(nu[None, :], t_air - 12.0) * (1.0 - tdv)
+            sold = 0.3 * 4e-8 * cos_sun * haze_fac * np.sqrt(tdv)
+            ld = np.stack([tdv, pthd, sold, pthd + sold], axis=1)
     else:
         sol = 2e-6 * cos_sun * az_fac * haze_fac * (0.5 + 0.3 * slope) * tau ** 0.7
         sing = 0.55 * sol

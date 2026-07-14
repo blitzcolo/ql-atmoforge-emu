@@ -35,7 +35,7 @@ import json
 from pathlib import Path
 
 DATASETS = [f"{b}_{p}_v1" for b in ("lwir", "mwir", "nir", "swir", "vis")
-            for p in ("ground", "slant")]
+            for p in ("ground", "slant", "sky")]
 SLUGS = ["01_clear", "02_turb_clear", "03_urban_haze", "04_fog",
          "05_light_rain", "06_heavy_rain", "07_snow", "08_haze"]
 AEROSOL_IHAZE = {"Rural": 1, "Maritime": 4, "Urban": 5,
@@ -43,6 +43,7 @@ AEROSOL_IHAZE = {"Rural": 1, "Maritime": 4, "Urban": 5,
 GEOM = {  # 域内代表几何
     "horizontal": {"h1_km": 0.1, "range_km": 1.0},
     "slant_to_ground": {"h1_km": 3.0, "view_zenith_deg": 135.0},
+    "sky": {"h1_km": 0.1, "view_zenith_deg": 45.0},
 }
 
 
