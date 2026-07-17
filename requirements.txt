@@ -7,3 +7,5 @@
 # torch>=2.9 才有原生 torch.optim.Muon；更老版本自动回退到内置 SimpleMuon。
 torch>=2.6
 numpy>=1.26
+# 可选：export_safetensors.py 导出用；未安装时自动回退到内置写入器（格式相同）
+safetensors>=0.4

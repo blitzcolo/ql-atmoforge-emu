@@ -115,6 +115,27 @@ python scripts/infer.py \
 下游合成 `L_sensor = τ·L_target + L_path`，目标项用 ldown 组装；MWIR 夜间把
 SOL_SCAT 分量置零。
 
+### 导出 safetensors（scripts/export_safetensors.py，C++ 渲染端）
+
+每个 run 目录导出为单个自包含文件 `<band>_<geom>_<net>.safetensors`
+（geom：horizontal→ground、slant_to_ground→slant、sky→sky）：EMA 权重 +
+逐目标归一化数组（F32 张量，log_mask 为 U8）+ JSON 元数据串（输入 spec、
+波段网格、目标定义、出处）。C++ 加载端不再需要 run 目录、manifest 或任何
+Python 产物；上节部署契约里的不透明门禁（opaque_delta=7）与 δ 钳 20 也随
+元数据携带。
+
+```sh
+python scripts/export_safetensors.py --all runs/ --out-dir export/atmos_models
+# 或指定单个 run：
+python scripts/export_safetensors.py --run-dir runs/lwir_ground_v1_tau_256x4_muon
+# 训练结束顺手导出：train.py ... --export-safetensors export/atmos_models
+```
+
+每个导出文件默认做自检（`--no-check` 关闭）：只凭导出文件重建独立 numpy
+前向（镜像 C++ 算法：特征装配 → fp32 ResMLP → float64 逆变换），在随机域内
+参数上与 torch 参考前向比对，max|dz| 与 max|dY|/peak 均须 ≤ 1e-4。
+未安装 safetensors 包时使用内置写入器，格式相同，不构成硬依赖。
+
 ### 锚点过闸（atmospheres.json 8 预设 × 10 数据集）
 
 ```sh
@@ -202,6 +223,8 @@ ql-atmoforge-emu/
 │   │                        #   有信号元素上统计（rad/bt_valid_frac 是覆盖率）
 │   ├── infer.py             # 示例推理：run 目录 → 物理光谱 npz（含不透明门禁
 │   │                        #   与辐亮度物理守卫；load_run 可当库用）
+│   ├── export_safetensors.py # run 目录 → 自包含 safetensors 包（C++ 渲染端）
+│   │                        #   ，含 numpy vs torch 前向一致性自检
 │   ├── make_anchor_configs.py # 8 预设 × 10 数据集 → 80 份单样本锚点 config
 │   ├── anchor_gate.py       # 锚点过闸：每网 × 8 锚点 vs MODTRAN 真值
 │   ├── train_all.sh         # 10 数据集全量流水线
@@ -215,6 +238,8 @@ ql-atmoforge-emu/
 runs/<dataset>_<net>_<tag>/  # config.json、best.pt/last.pt（含 EMA 权重）、
                              #   metrics.csv、norm/pca 副本（自包含，可直接部署）、
                              #   eval_<testset>.json
+export/atmos_models/         # export_safetensors.py 默认产物目录：
+                             #   <band>_<geom>_<net>.safetensors（C++ 端直接加载）
 ```
 
 ## 7. 已知约束
