@@ -71,6 +71,8 @@ def parse_args():
                     help="目标谱整体载入内存（mwir/lwir 建议开）")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--resume", default=None, help="last.pt 路径")
+    ap.add_argument("--export-safetensors", default=None, metavar="OUT_DIR",
+                    help="训练结束后把 best.pt 导出为 safetensors 包")
     return merge_config(ap)
 
 
@@ -304,6 +306,11 @@ def main():
         print(f"[done] best val {best_val:.5e} -> {out_dir / 'best.pt'}")
         print(f"       评估: python scripts/evaluate.py --run-dir {out_dir} "
               f"--data-dir <独立 random 测试集>")
+        if args.export_safetensors:
+            from scripts.export_safetensors import export_run, self_check
+            out = export_run(out_dir, Path(args.export_safetensors), "best.pt")
+            print(f"[export] -> {out}")
+            self_check(out_dir, out, "best.pt")
     if dist.is_available() and dist.is_initialized():
         dist.destroy_process_group()
 
